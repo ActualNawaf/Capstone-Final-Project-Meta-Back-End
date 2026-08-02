@@ -1,0 +1,174 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<section>
+  <article>
+    <h1>Make a reservation</h1>
+    <!-- Begin row -->
+    <div class="row">
+      <!-- Begin col -->
+      <div class="column">
+        <form method="POST" id="form">
+          {% csrf_token %}
+          <p>
+            <label for="first_name">Name:</label>
+            <input type="text" placeholder="Your Name" maxlength="200" id="first_name" required>
+          </p>
+          <p>
+            <label for="reservation_date">Reservation Date:</label>
+            <input type="date" id="reservation_date" required>
+          </p>
+          <p>
+            <label for="reservation_slot">Reservation Time:</label>
+            <select id="reservation_slot">
+              <option value="0" disabled selected>Select time</option>
+            </select>
+          </p>
+          <button type="button" id="button">Reserve Now</button>
+        </form>
+      </div>
+      <!-- End col -->
+
+      <!-- Begin col -->
+      <div class="column">
+        <h2>Booked Slots for <span id="today"></span></h2>
+        <div id="bookings"></div>
+      </div>
+      <!-- End col -->
+    </div>
+    <!-- End row -->
+  </article>
+</section>
+
+<script>
+  const dateInput = document.getElementById('reservation_date');
+  const slotSelect = document.getElementById('reservation_slot');
+  const todaySpan = document.getElementById('today');
+  const bookingsDiv = document.getElementById('bookings');
+
+  // Helper function to render time dropdown
+  function renderTimeSlots(reservedSlots = []) {
+    let options = '<option value="0" disabled selected>Select time</option>';
+    
+    // Operating hours 10 AM (10) to 8 PM (20)
+    for (let i = 10; i <= 20; i++) {
+      const label = formatTime(i);
+      if (reservedSlots.includes(i) || reservedSlots.includes(String(i))) {
+        options += `<option value="${i}" disabled>${label} (Booked)</option>`;
+      } else {
+        options += `<option value="${i}">${label}</option>`;
+      }
+    }
+    slotSelect.innerHTML = options;
+  }
+
+  function getBookings() {
+    const dateVal = dateInput.value;
+    
+    if (!dateVal) {
+      renderTimeSlots([]);
+      return;
+    }
+
+    if (todaySpan) todaySpan.textContent = dateVal;
+
+    // Notice the trailing slash in /bookings/?date=
+    fetch(`/bookings/?date=${dateVal}`)
+      .then(response => {
+        if (!response.ok) throw new Error("Network response error");
+        return response.json();
+      })
+      .then(data => {
+        let reservedSlots = [];
+        let bookingsHTML = '';
+
+        if (Array.isArray(data)) {
+          data.forEach(item => {
+            const slot = item.fields ? item.fields.reservation_slot : item.reservation_slot;
+            // Matches 'name' field from model
+            const name = item.fields ? (item.fields.name || item.fields.first_name) : (item.name || item.first_name || 'Reserved');
+            
+            if (slot) {
+              reservedSlots.push(Number(slot));
+              bookingsHTML += `<p>${name} - ${formatTime(slot)}</p>`;
+            }
+          });
+        }
+
+        if (bookingsDiv) {
+          bookingsDiv.innerHTML = bookingsHTML || '<p>No reservations for this date.</p>';
+        }
+
+        renderTimeSlots(reservedSlots);
+      })
+      .catch(error => {
+        console.error('API Fetch failed, displaying default time slots:', error);
+        renderTimeSlots([]);
+      });
+  }
+
+  function formatTime(time) {
+    const hourNum = Number(time);
+    const ampm = hourNum >= 12 ? 'PM' : 'AM';
+    const hour = hourNum % 12 || 12;
+    return `${hour}:00 ${ampm}`;
+  }
+
+  // Handle form submission via POST
+  document.getElementById('button').addEventListener('click', function () {
+    const name = document.getElementById('first_name').value;
+    const date = document.getElementById('reservation_date').value;
+    const slot = document.getElementById('reservation_slot').value;
+
+    if (!name || !date || slot === "0" || !slot) {
+      alert("Please fill in all fields and select a valid time slot.");
+      return;
+    }
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+
+    const formData = {
+      first_name: name,
+      reservation_date: date,
+      reservation_slot: slot,
+    };
+
+    // Notice trailing slash in /bookings/
+    fetch('/bookings/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify(formData)
+    })
+    .then(async response => {
+      if (response.ok) {
+        alert("Reservation successfully submitted!");
+        getBookings(); // Refresh the list and dropdown
+      } else {
+        const text = await response.text();
+        console.error("Django Error Response:", text);
+        alert(`Submission failed (${response.status}). Check browser console for details.`);
+      }
+    })
+    .catch(error => {
+      console.error('Network Error:', error);
+      alert("An error occurred while submitting your reservation.");
+    });
+  });
+
+  // Event Listeners for initialization
+  dateInput.addEventListener('change', getBookings);
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // Set default date to today YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0];
+    dateInput.value = today;
+    
+    // Fetch initial slots
+    getBookings();
+  });
+</script>
+{% endblock %}

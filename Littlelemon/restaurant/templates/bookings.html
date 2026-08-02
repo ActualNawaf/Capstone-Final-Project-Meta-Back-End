@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<section>
+  <article>
+    <h1>All Reservations</h1>
+    <div class="row">
+      <div class="column">
+        <div id="bookings-list"></div>
+      </div>
+    </div>
+  </article>
+</section>
+
+<script>
+  // Parse the serialized JSON passed from Django view
+  const bookingsData = JSON.parse('{{ bookings|escapejs }}');
+  const container = document.getElementById('bookings-list');
+
+  if (!bookingsData || bookingsData.length === 0) {
+    container.innerHTML = '<p>No reservations found.</p>';
+  } else {
+    let html = '<ul style="list-style: none; padding: 0;">';
+    bookingsData.forEach(item => {
+      const fields = item.fields;
+      const name = fields.first_name;
+      const resDate = fields.reservation_date;
+      const slot = fields.reservation_slot;
+      
+      const hourNum = Number(slot);
+      const ampm = hourNum >= 12 ? 'PM' : 'AM';
+      const formattedHour = (hourNum % 12 || 12) + ':00 ' + ampm;
+
+      html += `<li style="padding: 10px; margin-bottom: 8px; border-bottom: 1px solid #ddd;">
+                 <strong>${name}</strong> — ${resDate} at ${formattedHour}
+               </li>`;
+    });
+    html += '</ul>';
+    container.innerHTML = html;
+  }
+</script>
+{% endblock %}
